@@ -15,7 +15,7 @@ private:
 
     int radar_direction = 1; // Radar scanning direction (1-8)
     bool fixed_radar = false; // Tracks whether radar is locked on a target
-    const int max_range = 4; // Maximum range of the flamethrower
+    const int max_range = 10; // Maximum range of the flamethrower
     std::set<std::pair<int, int>> obstacles_memory; // Memory of obstacles
 
     // Helper function to calculate Manhattan distance
@@ -34,6 +34,7 @@ private:
         {
             if (obj.m_type == 'R') // Enemy robot
             {
+                std::cout << "Radar sees enemy at (" << obj.m_row << "," << obj.m_col << ")\n";
                 int distance = calculate_distance(current_row, current_col, obj.m_row, obj.m_col);
                 if (distance <= max_range && distance < closest_distance) 
                 {
@@ -68,6 +69,8 @@ private:
 public:
     Robot_Flame_e_o() : RobotBase(2, 5, flamethrower) 
     {
+        m_name = "Flame-e-o";
+        m_character = 'F';
         std::srand(static_cast<unsigned int>(std::time(nullptr))); // Seed for random movement
     }
 
