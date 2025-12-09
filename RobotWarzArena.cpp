@@ -1,3 +1,4 @@
+//Updated RobotWarzArena.cpp: 
 #include <bits/stdc++.h>
 #include <dlfcn.h>
 #include <filesystem>
@@ -11,6 +12,10 @@ namespace fs = std::filesystem;
 
 static const int BOARD_ROWS = 20;
 static const int BOARD_COLS = 20;
+
+static const char FLAME_OBS = 'F';
+static const char PIT_OBS = 'P';
+static const char MOUND_OBS = 'M';
 
 struct LoadedRobot {
     string cpp_file;
@@ -27,6 +32,33 @@ bool compile_robot(const string& cpp, string& out_so) {
     string cmd = "g++ -shared -fPIC -o " + out_so + " " + cpp + " RobotBase.o -I. -std=c++20";
     cerr << "Compiling: " << cmd << "\n";
     return system(cmd.c_str()) == 0;
+}
+
+//Helper: Obsticles
+void place_obstacles(vector<vector<char>>& board) {
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_int_distribution<> rdist(0, BOARD_ROWS - 1);
+    uniform_int_distribution<> cdist(0, BOARD_COLS - 1);
+
+    int num_flames = 10;
+    int num_pits = 5;
+    int num_mounds = 10;
+
+    auto place = [&](char ch, int count) {
+        while (count--) {
+            int r, c;
+            do {
+                r = rdist(gen);
+                c = cdist(gen);
+            } while (board[r][c] != '.');
+            board[r][c] = ch;
+        }
+    };
+
+    place(FLAME_OBS, num_flames);
+    place(PIT_OBS, num_pits);
+    place(MOUND_OBS, num_mounds);
 }
 
 //Place robots on the board at random free cells
@@ -105,6 +137,12 @@ void apply_shot(vector<LoadedRobot>& robots, int shooter_idx, int shot_r, int sh
     RobotBase* shooter = robots[shooter_idx].robot_instance;
     WeaponType wt = shooter->get_weapon();
 
+    if (shot_r < 0 || shot_r >= BOARD_ROWS || shot_c < 0 || shot_c >= BOARD_COLS) {
+        cout << shooter->m_name << " fired an invalid shot.\n";
+        return;
+    }
+
+
     auto damage_hit = [&](int target_idx, int dmg) {
         if (target_idx < 0) return;
         RobotBase* target = robots[target_idx].robot_instance;
@@ -118,6 +156,8 @@ void apply_shot(vector<LoadedRobot>& robots, int shooter_idx, int shot_r, int sh
             robots[target_idx].alive = false;
         }
     };
+
+
 
     switch (wt) {
         case railgun: {
@@ -141,7 +181,11 @@ void apply_shot(vector<LoadedRobot>& robots, int shooter_idx, int shot_r, int sh
             break;
         }
         case grenade: {
-            //3x3 centered on shot
+            if (shooter->get_grenades() <= 0) {
+                cout << shooter->m_name << " has no grenades left!\n";
+                break;
+            }
+
             for (int r = shot_r - 1; r <= shot_r + 1; ++r) {
                 for (int c = shot_c - 1; c <= shot_c + 1; ++c) {
                     if (r < 0 || r >= BOARD_ROWS || c < 0 || c >= BOARD_COLS) continue;
@@ -160,6 +204,14 @@ void apply_shot(vector<LoadedRobot>& robots, int shooter_idx, int shot_r, int sh
         }
     }
 }
+
+char get_under_cell(const vector<vector<char>>& board, int r, int c) {
+    char ch = board[r][c];
+    if (ch == FLAME_OBS || ch == PIT_OBS || ch == MOUND_OBS)
+        return ch;
+    return '.';
+}
+
 
 int main(int argc, char** argv) {
     cout << "RobotWarz arena starting...\n";
@@ -216,6 +268,8 @@ int main(int argc, char** argv) {
     //Simple board: '.' empty
     vector<vector<char>> board(BOARD_ROWS, vector<char>(BOARD_COLS, '.'));
 
+    place_obstacles(board);
+
     //Place robots
     place_robots_random(robots, board);
 
@@ -235,11 +289,32 @@ int main(int argc, char** argv) {
 
             // --- Radar scanning ---
             vector<RadarObj> radar_results;
-            for (int dir = 1; dir <= 8; ++dir) {
-                auto partial = do_radar_scan(r, dir, board, robots);
-                radar_results.insert(radar_results.end(), partial.begin(), partial.end());
-            }
+            int radar_dir = 0;
+            r->get_radar_direction(radar_dir);
 
+            if (radar_dir == 0) {
+                // Local radar (adjacent cells only)
+                int rr, rc;
+                r->get_current_location(rr, rc);
+
+                for (int dr = -1; dr <= 1; ++dr) {
+                    for (int dc = -1; dc <= 1; ++dc) {
+                        if (dr == 0 && dc == 0) continue;
+                        int nr = rr + dr, nc = rc + dc;
+                        if (nr < 0 || nr >= BOARD_ROWS || nc < 0 || nc >= BOARD_COLS) continue;
+
+                        int idx = find_robot_at(robots, nr, nc);
+                        if (idx != -1) {
+                            radar_results.emplace_back(
+                                robots[idx].robot_instance->m_character, nr, nc
+                            );
+                        }
+                    }
+                }
+            } else {
+                // Directional radar
+                radar_results = do_radar_scan(r, radar_dir, board, robots);
+            }
             cout << " checking radar ...";
             if (radar_results.empty()) cout << "found nothing.\n";
             else {
@@ -254,14 +329,23 @@ int main(int argc, char** argv) {
             if (r->get_shot_location(shot_r, shot_c)) {
                 cout << "Shooting: " << r->m_name << " aims at (" << shot_r << "," << shot_c << ")\n";
                 apply_shot(robots, (int)i, shot_r, shot_c);
+                if (!robots[i].alive) continue;
             }
+
+            
 
             // --- Movement ---
             int cur_r, cur_c;
             r->get_current_location(cur_r, cur_c);
 
+            int new_r = cur_r;
+            int new_c = cur_c;
+
+            int tr = cur_r;
+            int tc = cur_c;
+
             // Clear the old cell only if robot moves
-            board[cur_r][cur_c] = '.';
+            board[cur_r][cur_c] = get_under_cell(board, cur_r, cur_c);
 
             int move_dir = 0, move_dist = 0;
             r->get_move_direction(move_dir, move_dist);
@@ -269,17 +353,58 @@ int main(int argc, char** argv) {
                 int dr = directions[move_dir].first;
                 int dc = directions[move_dir].second;
 
-                int new_r = std::clamp(cur_r + dr * move_dist, 0, r->m_board_row_max - 1);
-                int new_c = std::clamp(cur_c + dc * move_dist, 0, r->m_board_col_max - 1);
+                // Reject invalid moves
+                if (move_dir < 1 || move_dir > 8 || move_dist <= 0 || move_dist > r->get_move_speed()) {
+                    cout << "Moving: " << r->m_name << " made invalid move.\n";
+                    board[cur_r][cur_c] = r->m_character;
+                    continue;
+                }
+
+                // Step-by-step movement (no jumping)
+                new_r = cur_r;
+                new_c = cur_c;
+                bool blocked = false;
+
+                for (int step = 0; step < move_dist; ++step) {
+                    tr = new_r + dr;
+                    tc = new_c + dc;
+
+                    if (tr < 0 || tr >= BOARD_ROWS || tc < 0 || tc >= BOARD_COLS) {
+                        blocked = true;
+                        break;
+                    }
+
+                    if (board[tr][tc] == MOUND_OBS) {
+                        blocked = true;
+                        break;
+                    }
+
+                    new_r = tr;
+                    new_c = tc;
+                }
 
                 // Block movement if target cell is occupied
-                if (board[new_r][new_c] != '.') {
-                    cout << "Moving: " << r->m_name << " blocked at (" << new_r << "," << new_c << ").\n";
+                if (blocked) {
+                    cout << "Moving: " << r->m_name << " blocked at (" << tr << "," << tc << ").\n";
                     board[cur_r][cur_c] = r->m_character; // stay in place
                 } else {
+                    char landed_cell = board[new_r][new_c];
+
                     r->move_to(new_r, new_c);
                     board[new_r][new_c] = r->m_character;
+
                     cout << "Moving: " << r->m_name << " moves to (" << new_r << "," << new_c << ").\n";
+
+                    if (landed_cell == FLAME_OBS) {
+                        cout << r->m_name << " stepped into flames!\n";
+                        r->reduce_armor(1);
+                        r->take_damage(8);
+                    }
+
+                    if (landed_cell == PIT_OBS) {
+                        cout << r->m_name << " fell into a pit! Movement disabled.\n";
+                        r->disable_movement();
+                    }
                 }
             } else {
                 // Stay put
@@ -297,32 +422,42 @@ int main(int argc, char** argv) {
             }
         }
 
-        // --- Check win condition ---
-        int alive_count = 0;
-        std::string winner;
-        for (auto &lr : robots) if (lr.alive) { alive_count++; winner = lr.robot_instance->m_name; }
+    // --- Check win condition ---
+    int alive_count = 0;
+    RobotBase* last_robot = nullptr;
 
-        if (alive_count <= 1) {
-            cout << "\n=== Game over. ";
-            if (alive_count == 1) cout << "Winner: " << winner << "\n";
-            else cout << "No winners.\n";
-            print_board(board);
-            break; // End game
+    for (auto &lr : robots) {
+        if (lr.alive) {
+            alive_count++;
+            last_robot = lr.robot_instance;
         }
-
-        round++;
-        if (round >= MAX_ROUNDS) {
-            cout << "\n=== Maximum rounds reached (" << MAX_ROUNDS << "). Ending simulation ===\n";
-            break;
-        }
-
-        if (round % 50 == 0) {
-            cout << "\n--- Still running: round " << round << " ---\n";
-        }
-
-        std::cout << "Press Enter to continue to the next round...";
-        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
     }
+
+    if (alive_count <= 1) {
+        cout << "\n=== Game over. ";
+        if (alive_count == 1) {
+            cout << "Robot " << last_robot->m_name 
+                << " is the last one standing. The Winner is Robot " 
+                << last_robot->m_name << "!\n";
+        } else {
+            cout << "All robots have been destroyed! No winner.\n";
+        }
+        print_board(board);
+        break; // End the simulation
+    }
+
+    if (round >= MAX_ROUNDS) {
+        cout << "\nReached maximum rounds. Ending simulation.\n";
+        print_board(board);
+        break;
+    }
+
+
+    round++;
+    // Optional: wait for Enter between rounds (only if more than 1 robot remains)
+    std::cout << "Press Enter to continue to the next round...";
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+}
 
 
     //cleanup
