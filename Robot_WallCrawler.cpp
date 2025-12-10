@@ -46,13 +46,13 @@ public:
         if (moving_down) {
             if (current_row + move < m_board_row_max) {
                 move_direction = 5; // Down
-                move_distance = move;
-            } else { moving_down = false; move_direction = 1; move_distance = move; }
+                move_distance = 1;
+            } else { moving_down = false; move_direction = 1; move_distance = 1; }
         } else {
             if (current_row - move >= 0) {
                 move_direction = 1; // Up
-                move_distance = move;
-            } else { moving_down = true; move_direction = 5; move_distance = move; }
+                move_distance = 1;
+            } else { moving_down = true; move_direction = 5; move_distance = 1; }
         }
     }
 };

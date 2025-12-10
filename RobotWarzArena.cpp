@@ -286,7 +286,7 @@ int main(int argc, char** argv) {
     place_robots_random(robots, board);
 
     int round = 0;
-    const int MAX_ROUNDS = 50000;
+    const int MAX_ROUNDS = 5000;
 
     while (true) {
         cout << "\n=========== starting round " << round << " ===========\n";
@@ -341,15 +341,17 @@ int main(int argc, char** argv) {
                 continue;
             }
 
-            robots[i].blocked_dirs.clear();
+            // Get move attempt
             int move_dir = 0, move_dist = 0;
             r->get_move_direction(move_dir, move_dist);
 
-            if (move_dir < 0 || move_dir > 8 || move_dist <= 0 || move_dist > r->get_move_speed()) {
-                cout << r->m_name << " chose invalid move (" << move_dir << "," << move_dist << "). Staying put.\n";
-                continue;
+            // Validate move attempt
+            if (move_dir < 1 || move_dir > 8 || move_dist <= 0 || move_dist > r->get_move_speed()) {
+                cout << r->m_name << " chose invalid move (" << move_dir << "," << move_dist << "). Staying put this turn.\n";
+                continue; // robot will try again next turn
             }
 
+            // Attempt move
             int cur_r, cur_c;
             r->get_current_location(cur_r, cur_c);
             int dr = directions[move_dir].first;
@@ -360,20 +362,25 @@ int main(int argc, char** argv) {
             for (int step = 0; step < move_dist; ++step) {
                 int tr = new_r + dr;
                 int tc = new_c + dc;
+
                 if (tr < 0 || tr >= BOARD_ROWS || tc < 0 || tc >= BOARD_COLS
                     || board[tr][tc] == MOUND_OBS || board[tr][tc] == 'X'
-                    || find_robot_at(robots, tr, tc) != -1) {
+                    || find_robot_at(robots, tr, tc) != -1) 
+                {
                     blocked = true;
                     break;
                 }
+
                 new_r = tr;
                 new_c = tc;
             }
 
             if (blocked) {
-                cout << "Moving: " << r->m_name << " blocked at (" << new_r << "," << new_c << "). Staying put.\n";
-                if (robots[i].alive) board[cur_r][cur_c] = r->m_character;
+                cout << "Moving: " << r->m_name << " blocked at (" << new_r << "," << new_c << "). Staying put this turn.\n";
+                board[cur_r][cur_c] = r->m_character; // leave robot in place
+                // do NOT set can_move_flag; robot will attempt again next turn
             } else {
+                // Valid move
                 char landed_cell = board[new_r][new_c];
                 board[cur_r][cur_c] = get_under_cell(board, cur_r, cur_c);
                 r->move_to(new_r, new_c);
@@ -384,21 +391,20 @@ int main(int argc, char** argv) {
                     int health = r->take_damage(8);
                     if (health <= 0) {
                         mark_robot_dead(robots[i], board);
-                        cout << r->m_name << " died in flames. Skipping turn.\n";
+                        cout << r->m_name << " died in flames.\n";
                         continue;
                     }
                 }
 
-                if (robots[i].alive) {
-                    board[new_r][new_c] = r->m_character;
-                }
+                board[new_r][new_c] = r->m_character;
 
                 if (landed_cell == PIT_OBS) {
-                    robots[i].can_move_flag = false;
+                    robots[i].can_move_flag = false; // only permanent if actually in pit
                     r->disable_movement();
                     cout << r->m_name << " fell into a pit and cannot move for the rest of the game!\n";
                 }
             }
+
 
             // Final alive check
             int vr, vc;
