@@ -44,7 +44,7 @@ void place_obstacles(vector<vector<char>>& board) {
     uniform_int_distribution<> cdist(0, BOARD_COLS - 1);
 
     int num_flames = 10;
-    int num_pits = 5;
+    int num_pits = 2;
     int num_mounds = 10;
 
     auto place = [&](char ch, int count) {
@@ -178,24 +178,41 @@ void apply_shot(vector<LoadedRobot>& robots, int shooter_idx, int shot_r, int sh
 
     switch (wt) {
         case railgun: {
+            int shooter_r, shooter_c;
+            shooter->get_current_location(shooter_r, shooter_c);
+
             for (size_t i = 0; i < robots.size(); ++i) {
                 if (!robots[i].alive) continue;
+                if ((int)i == shooter_idx) continue;  // skip the shooter
+
                 int rr, cc;
                 robots[i].robot_instance->get_current_location(rr, cc);
-                if (rr == shot_r) damage_hit((int)i, 12);
+
+                // Hit if on the same row OR same column as the target
+                if (rr == shot_r || cc == shot_c) {
+                    damage_hit((int)i, 12);
+                }
             }
             break;
         }
+
+
         case flamethrower: {
+            // Mark the flamethrower area as flames and damage any robots inside.
+            // The existing loops already iterate the intended box: rows [shot_r-2 .. shot_r+1], cols [shot_c-1 .. shot_c+1]
             for (int r = shot_r - 2; r <= shot_r + 1; ++r) {
                 for (int c = shot_c - 1; c <= shot_c + 1; ++c) {
                     if (r < 0 || r >= BOARD_ROWS || c < 0 || c >= BOARD_COLS) continue;
+                    // Place flame on the board
+                    board[r][c] = FLAME_OBS;
+                    // If there's a robot there, damage it
                     int idx = find_robot_at(robots, r, c);
                     if (idx != -1) damage_hit(idx, 8);
                 }
             }
             break;
         }
+
         case grenade: {
             if (shooter->get_grenades() <= 0) {
                 cout << shooter->m_name << " has no grenades left!\n";
@@ -290,7 +307,7 @@ int main(int argc, char** argv) {
 
     while (true) {
         cout << "\n=========== starting round " << round << " ===========\n";
-        print_board(board);
+        
 
         // --- Each robot takes a turn ---
         for (size_t i = 0; i < robots.size(); ++i) {
@@ -447,6 +464,12 @@ int main(int argc, char** argv) {
             }
             break;
         }
+        
+        print_board(board);
+
+        cout << "\nPress ENTER to continue to the next round...";
+        cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        cin.get(); // waits for ENTER
 
         round++;
     } // end while

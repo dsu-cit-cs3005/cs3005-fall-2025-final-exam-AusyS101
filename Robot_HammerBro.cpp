@@ -51,9 +51,6 @@ public:
             else if (target_row < current_row) { move_direction = 1; move_distance = 1;}
             else if (target_col > current_col) { move_direction = 3; move_distance = 1; }
             else { move_direction = 7; move_distance = 1; }
-        } else {
-            move_direction = -1; // No movement
-            move_distance = 0;
         }
     }
 };
