@@ -61,7 +61,7 @@ private:
 
 public:
     Robot_Teto()
-        : RobotBase(3, 2, railgun) // sensible defaults: move=3, armor=2, default weapon=railgun
+        : RobotBase(1, 5, railgun) // sensible defaults: move=3, armor=2, default weapon=railgun
     {
         m_name = "Teto";
         m_character = '4';
