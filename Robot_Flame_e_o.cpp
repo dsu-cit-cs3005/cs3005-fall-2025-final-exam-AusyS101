@@ -70,7 +70,7 @@ public:
     Robot_Flame_e_o() : RobotBase(2, 5, flamethrower) 
     {
         m_name = "Flame-e-o";
-        m_character = 'F';
+        m_character = '@';
         std::srand(static_cast<unsigned int>(std::time(nullptr))); // Seed for random movement
     }
 
